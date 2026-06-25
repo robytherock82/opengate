@@ -5,6 +5,8 @@
 
 > **The free, open-source alternative to AI Video Platforms.** Generate AI images and videos using 200+ state-of-the-art models — no content filters, no closed ecosystem, no subscription fees.
 
+> **Fork note:** this fork adds a provider-aware cloud layer with Kie.ai support while preserving MuAPI compatibility. See [README_FORK.md](./README_FORK.md) for the fork-specific migration notes.
+
 **Community:** Join [Reddit](https://www.reddit.com/r/muapi) & [Discord](https://discord.gg/QhTrNRU4r3) for discussions and support
 
 > **Latest Gemini Omni model from Google best prompts and resources:** [Gemini Omni Resources](https://github.com/Anil-matcha/Awesome-Gemini-Omni-API-Prompts)
