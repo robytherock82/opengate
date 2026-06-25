@@ -1,3 +1,14 @@
+import {
+  kieAudioModels,
+  kieI2IModels,
+  kieI2VModels,
+  kieLipSyncModels,
+  kieT2IModels,
+  kieT2VModels,
+  kieV2VModels,
+} from './providers/modelCatalog.kie.js';
+import { getActiveProviderId } from './providers/storage.js';
+
 // Auto-generated from models_dump.json
 export const t2iModels = [
   {
@@ -10598,3 +10609,57 @@ export const audioModels = [
 ];
 
 export const getAudioModelById = (id) => audioModels.find(m => m.id === id);
+
+const providerCatalog = {
+  kie: {
+    t2i: kieT2IModels,
+    i2i: kieI2IModels,
+    t2v: kieT2VModels,
+    i2v: kieI2VModels,
+    v2v: kieV2VModels,
+    lipsync: kieLipSyncModels,
+    audio: kieAudioModels,
+  },
+};
+
+function markProvider(models, provider) {
+  models.forEach(model => {
+    if (!model.provider) model.provider = provider;
+  });
+}
+
+function replaceModels(target, source) {
+  target.splice(0, target.length, ...source);
+}
+
+const muapiCatalog = {
+  t2i: t2iModels.slice(),
+  i2i: i2iModels.slice(),
+  t2v: t2vModels.slice(),
+  i2v: i2vModels.slice(),
+  v2v: v2vModels.slice(),
+  lipsync: lipsyncModels.slice(),
+  audio: audioModels.slice(),
+};
+
+Object.values(muapiCatalog).forEach(models => markProvider(models, 'muapi'));
+Object.values(providerCatalog.kie).forEach(models => markProvider(models, 'kie'));
+
+export function getModelsForProvider(providerId = getActiveProviderId(), capability) {
+  const catalog = providerId === 'kie' ? providerCatalog.kie : muapiCatalog;
+  if (capability) return catalog[capability] || [];
+  return catalog;
+}
+
+const activeProviderId = getActiveProviderId();
+if (activeProviderId === 'kie') {
+  replaceModels(t2iModels, kieT2IModels);
+  replaceModels(i2iModels, kieI2IModels);
+  replaceModels(t2vModels, kieT2VModels);
+  replaceModels(i2vModels, kieI2VModels);
+  replaceModels(v2vModels, kieV2VModels);
+  replaceModels(lipsyncModels, kieLipSyncModels);
+  replaceModels(imageLipSyncModels, kieLipSyncModels.filter(m => m.category === 'image'));
+  replaceModels(videoLipSyncModels, kieLipSyncModels.filter(m => m.category === 'video'));
+  replaceModels(audioModels, kieAudioModels);
+}

@@ -1,9 +1,29 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { ImageStudio, VideoStudio, ClippingStudio, VibeMotionStudio, LipSyncStudio, CinemaStudio, AudioStudio, MarketingStudio, WorkflowStudio, AgentStudio, AppsStudio, getUserBalance } from 'studio';
+import {
+  ImageStudio,
+  VideoStudio,
+  ClippingStudio,
+  VibeMotionStudio,
+  LipSyncStudio,
+  CinemaStudio,
+  AudioStudio,
+  MarketingStudio,
+  WorkflowStudio,
+  AgentStudio,
+  AppsStudio,
+  getActiveProviderId,
+  getProvider,
+  getProviderKey,
+  getProviderList,
+  getUserBalance,
+  providerSupportsMuapiOnlyFeatures,
+  setActiveProviderId,
+  setProviderKey,
+} from 'studio';
 
 const DesignAgentStudio = dynamic(() => import('studio').then(mod => mod.DesignAgentStudio), {
   ssr: false,
@@ -16,23 +36,21 @@ const TABS = [
   { id: 'image',   label: 'Image Studio' },
   { id: 'video',   label: 'Video Studio' },
   { id: 'audio',   label: 'Audio Studio' },
-  { id: 'clipping', label: 'AI Clipping' },
-  { id: 'vibe-motion', label: 'Vibe Motion' },
+  { id: 'clipping', label: 'AI Clipping', muapiOnly: true },
+  { id: 'vibe-motion', label: 'Vibe Motion', muapiOnly: true },
   { id: 'lipsync', label: 'Lip Sync' },
   { id: 'cinema',  label: 'Cinema Studio' },
   { id: 'marketing', label: 'Marketing Studio' },
-  { id: 'workflows', label: 'Workflows' },
-  { id: 'agents', label: 'Agents' },
-  { id: 'design-agent', label: 'Design Agent' },
-  { id: 'apps', label: 'Explore Apps' },
+  { id: 'workflows', label: 'Workflows', muapiOnly: true },
+  { id: 'agents', label: 'Agents', muapiOnly: true },
+  { id: 'design-agent', label: 'Design Agent', muapiOnly: true },
+  { id: 'apps', label: 'Explore Apps', muapiOnly: true },
 ];
-
-const STORAGE_KEY = 'muapi_key';
 
 export default function StandaloneShell() {
   const params = useParams();
   const router = useRouter();
-  const slug = params?.slug || []; 
+  const slug = useMemo(() => params?.slug || [], [params?.slug]);
   const idFromParams = params?.id;
   const tabFromParams = params?.tab;
 
@@ -62,6 +80,7 @@ export default function StandaloneShell() {
     return 'image';
   };
   
+  const [activeProvider, setActiveProvider] = useState('muapi');
   const [apiKey, setApiKey] = useState(null);
   const [activeTab, setActiveTab] = useState(getInitialTab());
 
@@ -77,6 +96,11 @@ export default function StandaloneShell() {
   // Drag and Drop State
   const [isDragging, setIsDragging] = useState(false);
   const [droppedFiles, setDroppedFiles] = useState(null);
+  const availableTabs = useMemo(
+    () => TABS.filter(tab => !tab.muapiOnly || providerSupportsMuapiOnlyFeatures(activeProvider)),
+    [activeProvider]
+  );
+  const activeProviderInfo = getProvider(activeProvider);
 
   // Sync tab with URL if user navigates manually or via browser back/forward
   useEffect(() => {
@@ -137,28 +161,51 @@ export default function StandaloneShell() {
 
   useEffect(() => {
     setHasMounted(true);
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const providerId = getActiveProviderId();
+    const stored = getProviderKey(providerId);
+    setActiveProvider(providerId);
     if (stored) {
       setApiKey(stored);
       fetchBalance(stored);
-      // Sync cookie immediately on mount to establish identity for background requests
-      document.cookie = `muapi_key=${stored}; path=/; max-age=31536000; SameSite=Lax`;
+      if (providerId === 'muapi') {
+        document.cookie = `muapi_key=${stored}; path=/; max-age=31536000; SameSite=Lax`;
+      }
     }
   }, [fetchBalance]);
 
-  const handleKeySave = useCallback((key) => {
-    localStorage.setItem(STORAGE_KEY, key);
+  const handleProviderChange = useCallback((providerId) => {
+    setActiveProviderId(providerId);
+    setActiveProvider(providerId);
+    const nextKey = getProviderKey(providerId);
+    setApiKey(nextKey);
+    setBalance(null);
+    if (nextKey) fetchBalance(nextKey);
+
+    const nextTabs = TABS.filter(tab => !tab.muapiOnly || providerSupportsMuapiOnlyFeatures(providerId));
+    if (!nextTabs.find(tab => tab.id === activeTab)) router.push('/studio/image');
+    else window.location.reload();
+  }, [activeTab, fetchBalance, router]);
+
+  const handleKeySave = useCallback((key, providerId = activeProvider) => {
+    setProviderKey(providerId, key);
+    setActiveProviderId(providerId);
+    setActiveProvider(providerId);
     setApiKey(key);
     fetchBalance(key);
-    document.cookie = `muapi_key=${key}; path=/; max-age=31536000; SameSite=Lax`;
-  }, [fetchBalance]);
+    if (providerId === 'muapi') {
+      document.cookie = `muapi_key=${key}; path=/; max-age=31536000; SameSite=Lax`;
+    }
+    window.location.reload();
+  }, [activeProvider, fetchBalance]);
 
   const handleKeyChange = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    setProviderKey(activeProvider, '');
     setApiKey(null);
     setBalance(null);
-    document.cookie = "muapi_key=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-  }, []);
+    if (activeProvider === 'muapi') {
+      document.cookie = "muapi_key=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    }
+  }, [activeProvider]);
 
   // Inject API key into all outgoing Axios requests (prop-based approach)
   // We use an interceptor to be selective and NOT send the key to external domains like S3
@@ -166,7 +213,7 @@ export default function StandaloneShell() {
     // Safety: Clear any global defaults that might have been set previously
     delete axios.defaults.headers.common['x-api-key'];
 
-    if (!apiKey) return;
+    if (!apiKey || activeProvider !== 'muapi') return;
 
     const interceptorId = axios.interceptors.request.use((config) => {
       // Check if URL is local/proxied
@@ -183,7 +230,7 @@ export default function StandaloneShell() {
     return () => {
       axios.interceptors.request.eject(interceptorId);
     };
-  }, [apiKey]);
+  }, [apiKey, activeProvider]);
 
   // Poll for balance every 30 seconds if key is present
   useEffect(() => {
@@ -191,6 +238,13 @@ export default function StandaloneShell() {
     const interval = setInterval(() => fetchBalance(apiKey), 30000);
     return () => clearInterval(interval);
   }, [apiKey, fetchBalance]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (!availableTabs.find(tab => tab.id === activeTab)) {
+      router.push('/studio/image');
+    }
+  }, [activeTab, availableTabs, hasMounted, router]);
 
   // Drag and Drop Handlers
   const handleDragOver = useCallback((e) => {
@@ -236,7 +290,16 @@ export default function StandaloneShell() {
   );
 
   if (!apiKey) {
-    return <ApiKeyModal onSave={handleKeySave} />;
+    return (
+      <ApiKeyModal
+        onSave={handleKeySave}
+        providerId={activeProvider}
+        providers={getProviderList()}
+        onProviderChange={handleProviderChange}
+        title="Open Generative AI"
+        subtitle={`Enter your ${activeProviderInfo.name} API key to start creating`}
+      />
+    );
   }
 
   return (
@@ -307,7 +370,7 @@ export default function StandaloneShell() {
             <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-[#030303] to-transparent pointer-events-none z-10 block lg:hidden" />
             
             <nav className="flex items-center gap-4 overflow-x-auto scrollbar-none w-full lg:w-auto h-full px-4 lg:px-0">
-              {TABS.map((tab) => (
+              {availableTabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => handleTabChange(tab.id)}
@@ -335,7 +398,10 @@ export default function StandaloneShell() {
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
               <div className="flex flex-col">
                 <span className="text-xs font-bold text-white/90">
-                  ${balance !== null ? `${balance}` : '---'}
+                  {activeProvider === 'muapi' ? '$' : ''}{balance !== null ? `${balance}` : '---'}
+                </span>
+                <span className="text-[10px] uppercase tracking-wide text-white/30">
+                  {activeProviderInfo.name}
                 </span>
               </div>
             </div>
@@ -381,6 +447,20 @@ export default function StandaloneShell() {
             </p>
             
             <div className="space-y-4 mb-8">
+              <div className="bg-white/5 border border-white/[0.03] rounded-md p-4">
+                <label className="block text-xs font-bold text-white/30 mb-2">
+                  Active Provider
+                </label>
+                <select
+                  value={activeProvider}
+                  onChange={(event) => handleProviderChange(event.target.value)}
+                  className="w-full bg-[#050505] border border-white/10 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#22d3ee]/30"
+                >
+                  {getProviderList().map(provider => (
+                    <option key={provider.id} value={provider.id}>{provider.name}</option>
+                  ))}
+                </select>
+              </div>
               <div className="bg-white/5 border border-white/[0.03] rounded-md p-4">
                 <label className="block text-xs font-bold text-white/30 mb-2">
                    Active API Key

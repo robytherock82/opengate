@@ -2,15 +2,21 @@
 
 import { useState } from 'react';
 
-export default function ApiKeyModal({ onSave, onClose, overlay = false, title, subtitle }) {
+export default function ApiKeyModal({ onSave, onClose, overlay = false, title, subtitle, providerId = 'muapi', providers = [], onProviderChange }) {
   const [key, setKey] = useState('');
   const [error, setError] = useState('');
+  const activeProvider = providers.find(provider => provider.id === providerId) || providers[0] || {
+    id: 'muapi',
+    name: 'MuAPI',
+    keyLabel: 'API Access Key',
+    keyUrl: 'https://muapi.ai/access-keys',
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const trimmed = key.trim();
     if (!trimmed) { setError('Please enter your API key'); return; }
-    onSave(trimmed);
+    onSave(trimmed, activeProvider.id);
   };
 
   const wrapperClass = overlay
@@ -43,15 +49,31 @@ export default function ApiKeyModal({ onSave, onClose, overlay = false, title, s
           </h1>
           <p className="text-white/40 text-[13px] leading-relaxed px-4">
             {subtitle || (
-              <>Enter your <a href="https://muapi.ai/access-keys" target="_blank" rel="noreferrer" className="text-[#22d3ee] hover:text-[#e5ff33] transition-colors">Muapi.ai</a> API key to start creating</>
+              <>Enter your <a href={activeProvider.keyUrl} target="_blank" rel="noreferrer" className="text-[#22d3ee] hover:text-[#e5ff33] transition-colors">{activeProvider.name}</a> API key to start creating</>
             )}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {providers.length > 1 && (
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-white/30 ml-1">
+                Provider
+              </label>
+              <select
+                value={activeProvider.id}
+                onChange={(event) => onProviderChange?.(event.target.value)}
+                className="w-full bg-white/5 border border-white/[0.03] rounded-md px-5 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#22d3ee]/30 focus:bg-white/[0.07] transition-all"
+              >
+                {providers.map(provider => (
+                  <option key={provider.id} value={provider.id}>{provider.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-white/30 ml-1">
-              API Access Key
+              {activeProvider.keyLabel || 'API Access Key'}
             </label>
             <input
               type="password"
@@ -74,7 +96,7 @@ export default function ApiKeyModal({ onSave, onClose, overlay = false, title, s
 
           <p className="text-center text-[12px] text-white/20 pt-2">
             Need a key?{' '}
-            <a href="https://muapi.ai/access-keys" target="_blank" rel="noreferrer" className="text-white/40 hover:text-[#22d3ee] transition-colors font-medium">
+            <a href={activeProvider.keyUrl} target="_blank" rel="noreferrer" className="text-white/40 hover:text-[#22d3ee] transition-colors font-medium">
               Get one free →
             </a>
           </p>
